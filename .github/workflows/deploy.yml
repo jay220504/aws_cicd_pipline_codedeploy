@@ -1,0 +1,44 @@
+name: Deploy to AWS CodeDeploy
+
+on:
+  push:
+    branches:
+      - testing
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v2
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ap-south-1
+
+    - name: Zip Code
+      run: zip -r deploy.zip . -x "*.git*"
+
+    - name: Upload to S3
+      env:
+        S3_BUCKET: my-codedeploy-bucket
+      run: |
+        aws s3 cp deploy.zip s3://$S3_BUCKET/
+
+    - name: Deploy with CodeDeploy
+      env:
+        APPLICATION_NAME: MyApp
+        DEPLOYMENT_GROUP_TEST: TestingGroup
+        DEPLOYMENT_GROUP_PROD: ProductionGroup
+      run: |
+        if [ "${{ github.ref }}" == "refs/heads/testing" ]; then
+          DEPLOY_GROUP=$DEPLOYMENT_GROUP_TEST
+        else
+          DEPLOY_GROUP=$DEPLOYMENT_GROUP_PROD
+        fi
+        aws deploy create-deployment --application-name $APPLICATION_NAME --deployment-group-name $DEPLOY_GROUP --s3-location bucket=$S3_BUCKET,key=deploy.zip,bundleType=zip
